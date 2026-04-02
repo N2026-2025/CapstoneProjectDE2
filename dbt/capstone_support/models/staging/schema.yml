@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: stg_tickets
+    description: "Staging model para los tickets de soporte"
+    columns:
+      - name: ticket_id
+        description: "ID único del ticket"
+        tests:
+          - not_null:
+              config:
+                severity: warn
+          - unique:
+              config:
+                severity: warn
+
+      - name: ticket_priority
+        description: "Prioridad del ticket (normalizada a minúsculas)"
+        tests:
+          - accepted_values:
+              values: ['low', 'medium', 'high', 'critical']
+              config:
+                severity: warn

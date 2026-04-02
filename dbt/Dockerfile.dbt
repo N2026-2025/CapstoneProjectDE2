@@ -1,0 +1,8 @@
+FROM python:3.11-slim
+# Instalamos dbt una sola vez acá, no en el arranque
+RUN pip install --no-cache-dir dbt-duckdb
+WORKDIR /usr/app/dbt/capstone_support
+# Mantenemos el contenedor vivo
+CMD ["tail", "-f", "/dev/null"]
+
+

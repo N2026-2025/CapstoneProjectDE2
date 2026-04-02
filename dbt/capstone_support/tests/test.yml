@@ -1,0 +1,4 @@
+tests:
+  - dbt_utils.unique_combination_of_columns:
+      combination_of_columns:
+        - ticket_id

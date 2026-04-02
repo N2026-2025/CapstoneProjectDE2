@@ -1,0 +1,13 @@
+customer_support_tickets:
+  outputs:
+    dev:
+      type: duckdb
+      path: /shared/duckdb/support.duckdb
+      threads: 4
+    prod:
+      type: duckdb
+      path: /shared/duckdb/support.duckdb
+      threads: 4
+  target: dev
+ 
+

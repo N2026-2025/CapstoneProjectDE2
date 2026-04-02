@@ -1,0 +1,5 @@
+name: 'capstone_support'
+version: '1.0.0'
+config-version: 2
+
+profile: 'capstone_support' # <--- ESTO ES LO QUE FALTA

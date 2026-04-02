@@ -1,0 +1,19 @@
+#FROM ghcr.io/dbt-labs/dbt-duckdb:latest
+#WORKDIR /usr/app/dbt
+
+FROM python:3.11-slim
+
+# Instalamos las dependencias una sola vez en la imagen
+RUN pip install --no-cache-dir dbt-duckdb
+
+# Seteamos el directorio de trabajo
+WORKDIR /usr/app/dbt/capstone_support
+
+# Seteamos la variable de entorno para que dbt encuentre el profile
+ENV DBT_PROFILES_DIR=/usr/app/dbt
+
+# El entrypoint vacío permite que el Makefile mande comandos directamente
+ENTRYPOINT ["dbt"]
+
+# Mantenemos el contenedor vivo
+CMD ["tail", "-f", "/dev/null"]

@@ -1,0 +1,22 @@
+    # Eliminamos el bloque 'core' si no tenés una carpeta con ese nombre
+name: 'customer_support_tickets' # el nombre que ya tengas
+version: '1.0.0'
+config-version: 2
+
+models:
+  customer_support_tickets:
+    # Configuración para models/staging
+    staging:
+      +materialized: view
+      +schema: staging
+    
+    # Configuración UNIFICADA para models/marts
+    marts:
+      +materialized: table
+      +schema: marts
+      # Aquí desactivamos la subcarpeta 'other' si no la vas a usar
+      other:
+        +enabled: false
+
+# Agregá esta línea:
+profile: 'customer_support_tickets'
