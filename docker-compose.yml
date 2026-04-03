@@ -1,0 +1,94 @@
+services:
+  kestra:
+    build:
+      context: .
+      dockerfile: kestra/Dockerfile.kestra 
+    container_name: kestra1
+    user: "root"
+    privileged: true
+    command: server standalone --worker-thread=4
+    ports:
+      - "18080:18080"
+    environment:
+      KESTRA_CONFIGURATION: |
+        kestra:
+          server:
+            basic-auth:
+              enabled: true
+              username: "admin@kestra.io"
+              password: "Admin1234"
+          storage:
+            type: local
+            local:
+              base-path: /app/storage
+          queue:
+            type: inmemory
+          repository:
+            type: h2
+            local:
+              base-path: /app/storage
+    volumes:
+      - ./flows:/app/flows
+      - ./scripts:/app/scripts
+      - ./storage:/app/storage
+      - ./dbt:/app/dbt
+      - ./duckdb:/shared/duckdb
+      - ./data:/shared/data
+    networks:
+      - support_net
+
+  dbt:
+    build:
+      context: ./dbt
+      dockerfile: Dockerfile.dbt
+    container_name: dbt
+    volumes:
+      - ./dbt:/usr/app/dbt
+      - ./duckdb:/shared/duckdb
+      - ./data:/shared/data
+    working_dir: /usr/app/dbt/capstone_support
+    environment:
+      - DBT_PROFILES_DIR=/usr/app/dbt
+    # Ya no hace falta el pip install acá, ya está en el Dockerfile
+    command: tail -f /dev/null
+    networks:
+      - support_net
+
+
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    environment:
+      SUPERSET_SECRET_KEY: "support_secret_key_123"
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./duckdb:/shared/duckdb
+      - superset_home:/app/superset_home
+    command: >
+      bash -c "pip install --quiet duckdb-engine duckdb pyarrow &&
+      superset db upgrade &&
+      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@support.io --password support1234 || true &&
+      superset init &&
+      superset run -h 0.0.0.0 -p 8088 --with-threads"
+    networks:
+      - support_net
+
+  jupyter:
+    image: jupyter/minimal-notebook:latest
+    container_name: jupyter
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./duckdb:/shared/duckdb
+      - ./data:/shared/data
+    networks:
+      - support_net
+
+networks:
+  support_net:
+    driver: bridge
+
+volumes:
+  superset_home:
