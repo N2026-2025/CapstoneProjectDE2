@@ -1,6 +1,6 @@
 # Capstone: Customer Support Ticket Analytics
 **Data Engineering Zoomcamp — Proyecto Final**
-> **Stack:** Kestra · DuckDB · dbt · Streamlit · Docker · Spark ·Terraform (GCP)
+> **Stack:** Kestra · DuckDB · dbt · Streamlit · Docker · Spark · Terraform (GCP)
 > **Dataset:** [Customer Support Ticket Dataset](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset) — 8,469 tickets · 17 columnas
  
 ---
