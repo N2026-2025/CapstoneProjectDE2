@@ -1,4 +1,4 @@
 # dbt dependencies
-dbt_packages/
-logs/
+#dbt_packages/
+#logs/
 target/
