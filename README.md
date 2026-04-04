@@ -211,13 +211,11 @@ capstone_support/
 │   └── outputs.tf                     # IPs y URLs del stack
 ├── scripts/
 │   └── download_dataset.py            # Descarga automática desde Kaggle
-|   └── init_duckdb.py                  ← Setup inicial de schemas
 ├── streamlit/
 │   ├── app.py                         # Home con links a las 5 páginas
 │   ├── requirements.txt
 │   ├── .streamlit/config.toml         # Tema oscuro + puerto 8501
 │   ├── utils/
-│   │   ├── __init__.py
 │   │   ├── db.py                      # Conexión DuckDB auto-detect
 │   │   └── sidebar.py                 # Sidebar compartido
 │   └── pages/
