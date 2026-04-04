@@ -1,6 +1,22 @@
 # Capstone: Customer Support Ticket Analytics
 **Data Engineering Zoomcamp — Proyecto Final**
-
+> **Stack:** Kestra · DuckDB · dbt · Streamlit · Docker · Terraform (GCP)
+> **Dataset:** [Customer Support Ticket Dataset](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset) — 8,469 tickets · 17 columnas
+ 
+---
+ 
+## 📋 Problem Description
+ 
+Las empresas de tecnología de consumo reciben miles de tickets de soporte al mes. Sin análisis estructurado, es imposible responder preguntas críticas como:
+ 
+- ¿Qué productos generan más quejas críticas sin resolver y están en riesgo de generar churn?
+- ¿Qué canal de soporte es realmente el más eficiente?
+- ¿Dónde exactamente se atascan los tickets en el pipeline de atención?
+- ¿Qué clientes están a punto de abandonar por experiencias repetidamente malas?
+ 
+Este proyecto construye un **pipeline de datos end-to-end** que ingesta tickets desde Kaggle, los transforma con dbt sobre DuckDB, y expone respuestas concretas en un dashboard interactivo con Streamlit. El objetivo: que cualquier equipo de CX o producto detecte fricciones operativas y tome decisiones basadas en datos.
+ 
+---
 ---
 
 ## Stack tecnológico
@@ -40,7 +56,31 @@ El dataset tiene entre 8K y 200K filas. DuckDB corre queries analíticas a esa e
 [200K Records Version](https://www.kaggle.com/datasets/mirzayasirabdullah07/customer-support-tickets-dataset-200k-records)
 
 ---
-
+---
+## 📊 Dashboards de Streamlit
+ 
+5 páginas en `./streamlit/pages/`, cada una conectada a un mart via DuckDB `read_only`.
+ 
+### 🏥 1 — Product Health
+**Mart:** `mart_product_health`
+Health score por producto (0-100), scatter resolución vs satisfacción coloreado por risk level (🔴🟡🟢), top críticos sin resolver, heatmap producto × tipo de ticket, tabla filtrable por nivel de riesgo.
+ 
+### 🚨 2 — Churn Risk
+**Mart:** `mart_repeat_customers`
+Segmentación Primera vez / Recurrente / Frecuente (3+), distribución de riesgo de churn, satisfacción por segmento vs neutral (3.0), canal preferido de clientes en riesgo, tabla top 50 clientes más críticos.
+ 
+### 🗄️ 3 — SQL Explorer
+Query libre sobre cualquier tabla DuckDB. 8 queries de ejemplo pre-cargadas, descarga de resultados en CSV, mini-visualización automática cuando hay columnas numéricas + categóricas.
+ 
+### 📡 4 — Channel Efficiency
+**Mart:** `mart_channel_efficiency`
+% resuelto por canal vs benchmark global, desvío de resolución y satisfacción en grouped bar, heatmap canal × prioridad, heatmap canal × tipo, scatter volumen vs eficiencia para identificar cuellos de botella.
+ 
+### 🔽 5 — Ticket Funnel
+**Mart:** `mart_ticket_funnel`
+Funnel visual Open → Pending → Closed con métricas absolutas, % atascados por subject, stacked bar estado por canal, heatmap canal × tipo, tabla de dead-ends (combinaciones con 0% cerrados).
+ 
+---
 ## Preguntas analíticas que podés responder
 
 ### 🏥 Product Health
@@ -80,9 +120,8 @@ El dataset tiene entre 8K y 200K filas. DuckDB corre queries analíticas a esa e
 | ¿Cuál es el desvío de satisfacción de cada canal vs el global? | Channel Efficiency |
 
 ---
-
+### Architecture
 ---
-
 
 ```mermaid
 flowchart TD
@@ -216,18 +255,36 @@ streaming.*    ← Datos que llegan por Kafka (opcional)
 ![alt text](<dashboard images/Screenshot 2026-04-04 124153.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 124349.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 124618.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125235.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125223.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125244.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125255.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125308.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125337.png>) ![alt text](<dashboard images/Screenshot 2026-04-04 125326.png>)
 
 ---
----
+
 
 ## Setup rápido
 
-```bash
+```
 # 1. Git clone repo or open codespace
+git clone https://github.com/tu-usuario/capstone-support-analytics
+cd capstone-support-analytics
+make setup
 
-# 2. Levantar el stack 
-Make up
+# 2. Descargar el dataset
 
-# 3. kestra + dbt + streamlit
+# Opción A — Automático (requiere API key Kaggle)
+export KAGGLE_USERNAME=tu_usuario
+export KAGGLE_KEY=tu_api_key
+python3 scripts/download_dataset.py
+ 
+# Opción B — Manual
+# Descargar desde: https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset
+# Guardar como: ./data/customer_support_tickets.csv
+
+# 3. Levantar el stack 
+make up
+make check
+
+# 4. kestra + dbt + streamlit
 Make pipeline 
+
+# 5. Ver el dashboard
+make streamlit       # → http://localhost:8501
 
 ```
 
