@@ -1,6 +1,6 @@
 # Capstone: Customer Support Ticket Analytics
 **Data Engineering Zoomcamp — Proyecto Final**
-> **Stack:** Kestra · DuckDB · dbt · Streamlit · Docker · Terraform (GCP)
+> **Stack:** Kestra · DuckDB · dbt · Streamlit · Docker · Spark ·Terraform (GCP)
 > **Dataset:** [Customer Support Ticket Dataset](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset) — 8,469 tickets · 17 columnas
  
 ---
@@ -249,6 +249,21 @@ marts.*        ← Tablas agregadas para dashboards (dbt)
 streaming.*    ← Datos que llegan por Kafka (opcional)
 ```
 
+---
+
+---
+ 
+## ☁️ Cloud — GCP + Terraform (Optional)
+ 
+```bash
+cd terraform
+terraform init
+terraform apply -var="project_id=TU_PROJECT_ID"
+# Output: IP pública + URLs del stack desplegado
+```
+ 
+Recursos creados: Compute Engine VM (e2-standard-4) · GCS Bucket · Firewall (puertos 18080/8088/8888/8501) · Service Account con roles Storage Admin.
+ 
 ---
 
 ## Dashboards sugeridos en Streamlit.
