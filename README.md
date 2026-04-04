@@ -83,83 +83,50 @@ El dataset tiene entre 8K y 200K filas. DuckDB corre queries analíticas a esa e
 
 ---
 
-%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#1C2333', 'primaryTextColor': '#FAFAFA', 'primaryBorderColor': '#636EFA', 'lineColor': '#636EFA', 'secondaryColor': '#0E1117', 'tertiaryColor': '#1C2333', 'edgeLabelBackground': '#1C2333'}}}%%
-
+Archivo: [`architecture.mmd`](./architecture.mmd) — renderizable en [mermaid.live](https://mermaid.live) o con `mmdc`.
+ 
+```mermaid
 flowchart TD
     subgraph CLOUD["☁️ GCP — Terraform IaC"]
-        VM["Compute Engine VM\ne2-standard-4  4vCPU 16GB"]
-        GCS["GCS Bucket\ncapstone-data"]
+        VM["Compute Engine VM e2-standard-4"]
+        GCS["GCS Bucket capstone-data"]
     end
-
     subgraph SOURCE["📥 Data Sources"]
-        CSV["CSV — Kaggle\n8,469 tickets · 17 cols"]
-        KAFKA["Kafka topic\nsupport_tickets_raw"]
+        CSV["CSV Kaggle 8469 rows"]
+        KAFKA["Kafka topic tickets_raw"]
     end
-
-    subgraph ORCH["🎛️ Kestra :18080 — Orquestación"]
-        F1["Flow 01\ningest_csv\n⏰ daily 6AM"]
-        F2["Flow 02\nrun_dbt\n🔗 auto-trigger on SUCCESS"]
-        F3["Flow 03\nkafka_stream\nproducer + consumer"]
-        F4["Flow 04\nspark_streaming\nPySpark micro-batch"]
+    subgraph ORCH["🎛️ Kestra :18080"]
+        F1["Flow 01 ingest_csv daily 6AM"]
+        F2["Flow 02 run_dbt auto-trigger"]
+        F3["Flow 03 kafka_stream producer+consumer"]
+        F4["Flow 04 spark_streaming PySpark micro-batch"]
     end
-
-    subgraph DB["🗄️ DuckDB — support.duckdb"]
-        RAW["raw.customer_support_tickets\n+ _ingested_at  + _kestra_run_id"]
-        STREAM["streaming.tickets_spark\nStreaming layer"]
+    subgraph DB["🗄️ DuckDB support.duckdb"]
+        RAW["raw.customer_support_tickets"]
+        STREAM["streaming.tickets_spark"]
     end
-
-    subgraph DBT["⚙️ dbt — Transformaciones"]
-        subgraph STAGING["Staging — views"]
-            STG1["stg_tickets\nlimpieza · tipos · flags · surrogate key"]
-            STG2["stg_users\ndedup de clientes"]
-        end
-        subgraph MARTS["Marts — tables  ORDER BY partition+cluster key"]
-            PH["mart_product_health\nhealth score 0-100 · risk level"]
-            RC["mart_repeat_customers\nchurn risk segments"]
-            TF["mart_ticket_funnel\nOpen→Pending→Closed · dead-ends"]
-            CE["mart_channel_efficiency\ndesvío vs benchmark global"]
-        end
+    subgraph DBT["⚙️ dbt Transformations"]
+        STG["stg_tickets · stg_users views"]
+        PH["mart_product_health"]
+        RC["mart_repeat_customers"]
+        TF["mart_ticket_funnel"]
+        CE["mart_channel_efficiency"]
     end
-
     subgraph VIZ["📊 Visualización"]
-        ST["🚀 Streamlit :8501\n5 páginas · SQL Explorer"]
-        SUP["📊 Superset :8088\nread_only URI"]
-        JUP["📓 Jupyter :8888\nnotebooks ad-hoc"]
+        ST["Streamlit :8501 5 páginas"]
+        SUP["Superset :8088"]
+        JUP["Jupyter :8888"]
     end
-
-    GCS --> VM
-    VM --> ORCH
-
-    CSV --> F1
-    F1 --> RAW
-    F1 -->|"SUCCESS trigger"| F2
-
-    KAFKA --> F3
-    KAFKA --> F4
-    F3 --> STREAM
-    F4 --> STREAM
-
-    RAW --> F2
-    F2 --> STG1
-    F2 --> STG2
-
-    STG1 --> PH
-    STG1 --> RC
-    STG1 --> TF
-    STG1 --> CE
-    STG2 --> RC
-
-    PH --> ST
-    RC --> ST
-    TF --> ST
-    CE --> ST
-
-    PH --> SUP
-    RC --> SUP
-    TF --> SUP
-    CE --> SUP
-
+ 
+    GCS --> VM --> ORCH
+    CSV --> F1 --> RAW
+    F1 -->|SUCCESS trigger| F2
+    KAFKA --> F3 & F4 --> STREAM
+    RAW --> F2 --> STG
+    STG --> PH & RC & TF & CE
+    PH & RC & TF & CE --> ST & SUP
     RAW --> JUP
+```
 
 ---
 
