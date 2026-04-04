@@ -1,0 +1,40 @@
+id: run_dbt_transforms
+namespace: capstone.support
+
+description: |
+  Ejecuta los modelos dbt sobre DuckDB para generar
+  staging y data marts listos para Superset.
+
+variables:
+  dbt_project_dir: /app/dbt/capstone_support
+  profiles_dir: /app/dbt
+
+triggers:
+  - id: after_ingestion
+    type: io.kestra.plugin.core.trigger.Flow
+    conditions:
+      - type: io.kestra.plugin.core.condition.ExecutionStatus
+        in:
+          - SUCCESS
+    inputs:
+      namespace: capstone.support
+      flowId: ingest_customer_support_csv
+
+tasks:
+  - id: dbt_run
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - cd {{vars.dbt_project_dir}}
+      - dbt deps --profiles-dir {{vars.profiles_dir}}
+      - dbt run --profiles-dir {{vars.profiles_dir}} --target prod
+      - dbt test --profiles-dir {{vars.profiles_dir}}
+
+  - id: dbt_docs
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - cd {{vars.dbt_project_dir}}
+      - dbt docs generate --profiles-dir {{vars.profiles_dir}}

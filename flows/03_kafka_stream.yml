@@ -1,0 +1,84 @@
+id: stream_tickets_kafka
+namespace: capstone.support
+
+description: |
+  Simula ingesta streaming via Kafka nativo (bitnami/kafka).
+  Publica tickets uno a uno como si viniera de un API en tiempo real.
+
+variables:
+  kafka_bootstrap: kafka:9092
+  topic: support_tickets_raw
+  duckdb_path: /shared/duckdb/support.duckdb
+
+tasks:
+  # ----------------------------------------------------------
+  # 1. Publicar batch de tickets al topic
+  # ----------------------------------------------------------
+  - id: publish_tickets
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    beforeCommands:
+      - pip install --quiet kafka-python duckdb pandas
+    script: |
+      from kafka import KafkaProducer
+      import duckdb, json, time
+
+      # Intentamos conectar al broker
+      producer = KafkaProducer(
+          bootstrap_servers=["{{vars.kafka_bootstrap}}"],
+          value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8")
+      )
+
+      con = duckdb.connect("{{vars.duckdb_path}}")
+      # Tomamos datos de la tabla raw cargada por el Makefile
+      try:
+          rows = con.execute("""
+              SELECT * FROM raw.customer_support_tickets 
+              LIMIT 100
+          """).df().to_dict(orient="records")
+          
+          for i, row in enumerate(rows):
+              producer.send("{{vars.topic}}", value=row)
+              if i % 20 == 0:
+                  print(f"Enviando ticket {i+1}...")
+              time.sleep(0.01)
+          
+          producer.flush()
+          print(f"✅ Total publicado: {len(rows)} tickets en Kafka")
+      except Exception as e:
+          print(f"❌ Error: {e}")
+      finally:
+          con.close()
+
+  # ----------------------------------------------------------
+  # 2. Consumir y escribir a DuckDB (capa streaming)
+  # ----------------------------------------------------------
+  - id: consume_to_duckdb
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    beforeCommands:
+      - pip install --quiet kafka-python duckdb pandas
+    script: |
+      from kafka import KafkaConsumer
+      import duckdb, json, pandas as pd
+
+      consumer = KafkaConsumer(
+          "{{vars.topic}}",
+          bootstrap_servers=["{{vars.kafka_bootstrap}}"],
+          auto_offset_reset="earliest",
+          consumer_timeout_ms=5000,
+          value_deserializer=lambda v: json.loads(v.decode("utf-8"))
+      )
+
+      records = [msg.value for msg in consumer]
+      print(f"📥 Consumidos: {len(records)} mensajes de Kafka")
+
+      if records:
+          df = pd.DataFrame(records)
+          con = duckdb.connect("{{vars.duckdb_path}}")
+          con.execute("CREATE SCHEMA IF NOT EXISTS streaming")
+          con.execute("CREATE OR REPLACE TABLE streaming.tickets_stream AS SELECT * FROM df")
+          print(f"✅ Guardado en tabla: streaming.tickets_stream ({len(df)} filas)")
+          con.close()

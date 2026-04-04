@@ -1,0 +1,115 @@
+id: ingest_customer_support_csv
+namespace: capstone.support
+
+description: |
+  Descarga el dataset de Customer Support Tickets (CSV) desde Kaggle
+  y lo carga en DuckDB como tabla raw. Alternativa batch al API.
+
+variables:
+  duckdb_path: /shared/duckdb/support.duckdb
+  data_dir: /shared/data
+  dataset_name: suraj520/customer-support-ticket-dataset
+
+triggers:
+  - id: schedule_daily
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 6 * * *"   # Cada día a las 6 AM
+
+tasks:
+
+  # ----------------------------------------------------------
+  # 1. Descargar CSV desde Kaggle (requiere KAGGLE_KEY en .env)
+  # ----------------------------------------------------------
+  - id: download_csv
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    script: |
+      import subprocess, os
+
+      kaggle_user = os.environ.get("KAGGLE_USERNAME", "")
+      kaggle_key  = os.environ.get("KAGGLE_KEY", "")
+
+      if not kaggle_user or not kaggle_key:
+          print("KAGGLE_USERNAME / KAGGLE_KEY no encontrados. Usando archivo local si existe.")
+      else:
+          os.makedirs("/root/.kaggle", exist_ok=True)
+          with open("/root/.kaggle/kaggle.json", "w") as f:
+              import json
+              json.dump({"username": kaggle_user, "key": kaggle_key}, f)
+          os.chmod("/root/.kaggle/kaggle.json", 0o600)
+          subprocess.run([
+              "kaggle", "datasets", "download",
+              "-d", "{{vars.dataset_name}}",
+              "-p", "{{vars.data_dir}}",
+              "--unzip"
+          ], check=True)
+          print("Descarga completada.")
+
+  # ----------------------------------------------------------
+  # 2. Cargar CSV a DuckDB (raw layer)
+  # ----------------------------------------------------------
+  - id: load_raw_to_duckdb
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    script: |
+      import duckdb, glob, os
+
+      db_path = "{{vars.duckdb_path}}"
+      data_dir = "{{vars.data_dir}}"
+
+      # Buscar el CSV (acepta variantes de nombre)
+      csv_files = glob.glob(f"{data_dir}/**/*.csv", recursive=True)
+      if not csv_files:
+          raise FileNotFoundError(f"No hay CSVs en {data_dir}")
+
+      csv_path = csv_files[0]
+      print(f"Cargando: {csv_path}")
+
+      con = duckdb.connect(db_path)
+
+      # Schema raw: preserva todo tal cual
+      con.execute("CREATE SCHEMA IF NOT EXISTS raw")
+      con.execute("""
+          CREATE OR REPLACE TABLE raw.customer_support_tickets AS
+          SELECT
+              *,
+              current_timestamp AS _ingested_at,
+              '{{execution.id}}' AS _kestra_run_id
+          FROM read_csv_auto(?, header=true)
+      """, [csv_path])
+
+      count = con.execute("SELECT COUNT(*) FROM raw.customer_support_tickets").fetchone()[0]
+      print(f"Filas cargadas en raw.customer_support_tickets: {count:,}")
+      con.close()
+
+  # ----------------------------------------------------------
+  # 3. Validación básica de calidad
+  # ----------------------------------------------------------
+  - id: quality_check
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    script: |
+      import duckdb
+
+      con = duckdb.connect("{{vars.duckdb_path}}")
+      result = con.execute("""
+          SELECT
+              COUNT(*)                                         AS total_rows,
+              COUNT(DISTINCT "Ticket ID")                     AS unique_tickets,
+              SUM(CASE WHEN "Ticket ID" IS NULL THEN 1 END)   AS null_ticket_ids,
+              MIN("Date of Purchase")                         AS min_date,
+              MAX("Date of Purchase")                         AS max_date
+          FROM raw.customer_support_tickets
+      """).df()
+      print(result.to_string())
+
+      # Falla si hay más del 20% de IDs nulos
+      null_pct = result["null_ticket_ids"][0] / result["total_rows"][0]
+      if null_pct > 0.20:
+          raise ValueError(f"Demasiados Ticket IDs nulos: {null_pct:.1%}")
+
+      con.close()
+      print("Quality check OK.")

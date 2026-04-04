@@ -2,14 +2,15 @@ services:
   kestra:
     build:
       context: .
-      dockerfile: kestra/Dockerfile.kestra 
+      dockerfile: flows/Dockerfile.kestra
     container_name: kestra1
     user: "root"
     privileged: true
-    command: server standalone --worker-thread=4
+    command: server standalone --worker-thread=128
     ports:
       - "18080:18080"
     environment:
+      MICRONAUT_SERVER_PORT: 18080
       KESTRA_CONFIGURATION: |
         kestra:
           server:
@@ -17,16 +18,14 @@ services:
               enabled: true
               username: "admin@kestra.io"
               password: "Admin1234"
+          repository:
+            type: h2
+          queue:
+            type: h2
           storage:
             type: local
             local:
-              base-path: /app/storage
-          queue:
-            type: inmemory
-          repository:
-            type: h2
-            local:
-              base-path: /app/storage
+              base-path: "/app/storage"
     volumes:
       - ./flows:/app/flows
       - ./scripts:/app/scripts
@@ -34,8 +33,10 @@ services:
       - ./dbt:/app/dbt
       - ./duckdb:/shared/duckdb
       - ./data:/shared/data
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - support_net
+    restart: unless-stopped
 
   dbt:
     build:
@@ -49,11 +50,9 @@ services:
     working_dir: /usr/app/dbt/capstone_support
     environment:
       - DBT_PROFILES_DIR=/usr/app/dbt
-    # Ya no hace falta el pip install acá, ya está en el Dockerfile
     command: tail -f /dev/null
     networks:
       - support_net
-
 
   superset:
     image: apache/superset:latest
@@ -65,12 +64,22 @@ services:
     volumes:
       - ./duckdb:/shared/duckdb
       - superset_home:/app/superset_home
+    # URI para conectar en Superset:
+    # duckdb:////shared/duckdb/support.duckdb?access_mode=READ_ONLY
     command: >
-      bash -c "pip install --quiet duckdb-engine duckdb pyarrow &&
+      bash -c "pip install --quiet
+        'duckdb==0.10.3'
+        'duckdb-engine==0.13.0'
+        'sqlalchemy==1.4.52' &&
       superset db upgrade &&
-      superset fab create-admin --username admin --firstname Admin --lastname User --email admin@support.io --password support1234 || true &&
+      superset fab create-admin
+        --username admin
+        --firstname Admin
+        --lastname User
+        --email admin@support.io
+        --password support1234 || true &&
       superset init &&
-      superset run -h 0.0.0.0 -p 8088 --with-threads"
+      /usr/bin/run-server.sh"
     networks:
       - support_net
 
@@ -79,12 +88,57 @@ services:
     container_name: jupyter
     ports:
       - "8888:8888"
+    environment:
+      - JUPYTER_TOKEN=support
     volumes:
       - ./notebooks:/home/jovyan/work
       - ./duckdb:/shared/duckdb
       - ./data:/shared/data
     networks:
       - support_net
+
+  # ── STREAMLIT DASHBOARD ────────────────────────────────────────────────────
+  # Código fuente en ./streamlit/ (app.py + pages/ + utils/)
+  # Para levantar: make streamlit
+  # Para ver logs:  make streamlit-logs
+  # Dashboard:      http://localhost:8501
+  streamlit:
+    image: python:3.11-slim
+    container_name: streamlit
+    volumes:
+      - ./streamlit:/app          # carpeta del dashboard
+      - ./duckdb:/shared/duckdb   # acceso read-only al DuckDB
+    working_dir: /app
+    ports:
+      - "8501:8501"
+    command: >
+      bash -c "pip install --quiet -r requirements.txt &&
+      streamlit run app.py
+        --server.port 8501
+        --server.address 0.0.0.0
+        --server.headless true"
+    networks:
+      - support_net
+    restart: unless-stopped
+
+  # ── KAFKA (opcional) ───────────────────────────────────────────────────────
+  # Descomentá este bloque y corré: make kafka-up
+  # kafka:
+  #   image: bitnami/kafka:3.6
+  #   container_name: kafka
+  #   ports:
+  #     - "9092:9092"
+  #   environment:
+  #     - KAFKA_CFG_NODE_ID=1
+  #     - KAFKA_CFG_PROCESS_ROLES=broker,controller
+  #     - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+  #     - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+  #     - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+  #     - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+  #     - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+  #     - ALLOW_PLAINTEXT_LISTENER=yes
+  #   networks:
+  #     - support_net
 
 networks:
   support_net:

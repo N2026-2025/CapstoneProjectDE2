@@ -1,0 +1,12 @@
+FROM kestra/kestra:latest
+
+USER root
+# Instalación de dependencias
+RUN apt-get update -qq && apt-get install -y -qq python3 python3-pip python3-venv curl
+RUN pip install --quiet dbt-duckdb pyarrow pandas requests
+
+# Instalación de plugins (Nombres oficiales actuales)
+RUN /app/kestra plugins install io.kestra.plugin:plugin-jdbc-duckdb:LATEST
+RUN /app/kestra plugins install io.kestra.plugin:plugin-script-python:LATEST
+RUN /app/kestra plugins install io.kestra.plugin:plugin-dbt:LATEST
+#gives an errorRUN /app/kestra plugins install io.kestra.plugin:plugin-task-runner-process:LATEST
