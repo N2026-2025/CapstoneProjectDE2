@@ -6,7 +6,6 @@ with source as (
 
 cleaned as (
     select
-        -- La clave subrogada va ACÁ adentro del select
         {{ dbt_utils.generate_surrogate_key(['"Customer Name"', '"Customer Email"']) }} as customer_id,
         cast("Ticket ID"           as varchar)  as ticket_id,
         lower(trim("Customer Name"))            as customer_name,
@@ -19,8 +18,19 @@ cleaned as (
         lower(trim("Ticket Status"))            as ticket_status,
         lower(trim("Ticket Priority"))          as ticket_priority,
         lower(trim("Ticket Channel"))           as ticket_channel,
+        
+        -- Cálculo de horas
         epoch(cast("First Response Time" as timestamp)) / 3600.0  as first_response_hrs,
         epoch(cast("Time to Resolution"  as timestamp)) / 3600.0  as resolution_hrs,
+        
+        -- Booleanos para KPIs
+        (lower(trim("Ticket Status")) = 'open' and "First Response Time" is null) as is_open_no_response,
+        (lower(trim("Ticket Status")) != 'resolved') as is_unresolved,
+        
+        -- Extracción de horas (ambas necesarias para los marts)
+        extract(hour from cast("First Response Time" as timestamp)) as first_response_hour_of_day,
+        extract(hour from cast("Time to Resolution"  as timestamp)) as resolution_hour_of_day,
+
         cast("Customer Satisfaction Rating" as double) as satisfaction_rating,
         _ingested_at
     from source

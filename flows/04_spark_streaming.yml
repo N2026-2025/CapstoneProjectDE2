@@ -1,0 +1,193 @@
+id: stream_tickets_spark
+namespace: capstone.support
+
+description: |
+  Ingesta streaming con Kafka + PySpark Structured Streaming.
+  Producer publica tickets a Kafka → Spark lee el topic,
+  aplica transformaciones en micro-batches y escribe a DuckDB.
+  
+  Puntaje Stream: 4/4
+  (consumer/producer + Spark Structured Streaming como tecnología de procesamiento)
+
+variables:
+  kafka_bootstrap: kafka:9092
+  topic: support_tickets_raw
+  duckdb_path: /shared/duckdb/support.duckdb
+  checkpoint_dir: /shared/spark_checkpoint
+
+tasks:
+
+  # ─────────────────────────────────────────────────────────────
+  # 1. Producer: publica tickets a Kafka (igual que flow 03)
+  # ─────────────────────────────────────────────────────────────
+  - id: publish_to_kafka
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    beforeCommands:
+      - pip install --quiet kafka-python duckdb pandas
+    script: |
+      from kafka import KafkaProducer
+      import duckdb, json, time
+
+      producer = KafkaProducer(
+          bootstrap_servers=["{{vars.kafka_bootstrap}}"],
+          value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8")
+      )
+
+      con = duckdb.connect("{{vars.duckdb_path}}")
+      rows = con.execute("""
+          SELECT * FROM raw.customer_support_tickets LIMIT 500
+      """).df().to_dict(orient="records")
+
+      for i, row in enumerate(rows):
+          producer.send("{{vars.topic}}", value=row)
+          if i % 50 == 0:
+              print(f"📤 Publicados {i+1} tickets...")
+          time.sleep(0.005)
+
+      producer.flush()
+      print(f"✅ {len(rows)} tickets publicados en topic: {{vars.topic}}")
+      con.close()
+
+  # ─────────────────────────────────────────────────────────────
+  # 2. Spark Structured Streaming: consume y transforma
+  # ─────────────────────────────────────────────────────────────
+  - id: spark_streaming_consumer
+    type: io.kestra.plugin.scripts.python.Script
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    beforeCommands:
+      - pip install --quiet pyspark kafka-python duckdb pandas
+    script: |
+      from pyspark.sql import SparkSession
+      from pyspark.sql.functions import (
+          col, from_json, lower, trim, when,
+          hour, minute, current_timestamp, lit
+      )
+      from pyspark.sql.types import (
+          StructType, StructField, StringType,
+          IntegerType, DoubleType
+      )
+      import duckdb, json
+
+      # ── Schema del mensaje Kafka ──────────────────────────────
+      SCHEMA = StructType([
+          StructField("Ticket ID",                   StringType()),
+          StructField("Customer Name",               StringType()),
+          StructField("Customer Email",              StringType()),
+          StructField("Customer Age",                StringType()),
+          StructField("Customer Gender",             StringType()),
+          StructField("Product Purchased",           StringType()),
+          StructField("Date of Purchase",            StringType()),
+          StructField("Ticket Type",                 StringType()),
+          StructField("Ticket Subject",              StringType()),
+          StructField("Ticket Status",               StringType()),
+          StructField("Ticket Priority",             StringType()),
+          StructField("Ticket Channel",              StringType()),
+          StructField("First Response Time",         StringType()),
+          StructField("Time to Resolution",          StringType()),
+          StructField("Customer Satisfaction Rating", StringType()),
+      ])
+
+      spark = (SparkSession.builder
+          .appName("SupportTicketsStreaming")
+          .config("spark.jars.packages",
+                  "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0")
+          .config("spark.sql.streaming.checkpointLocation",
+                  "{{vars.checkpoint_dir}}")
+          .getOrCreate())
+
+      spark.sparkContext.setLogLevel("WARN")
+      print("✅ SparkSession iniciada")
+
+      # ── Leer desde Kafka ──────────────────────────────────────
+      raw_df = (spark.readStream
+          .format("kafka")
+          .option("kafka.bootstrap.servers", "{{vars.kafka_bootstrap}}")
+          .option("subscribe", "{{vars.topic}}")
+          .option("startingOffsets", "earliest")
+          .option("maxOffsetsPerTrigger", 500)
+          .load())
+
+      # ── Parsear JSON ──────────────────────────────────────────
+      parsed = (raw_df
+          .select(from_json(
+              col("value").cast("string"), SCHEMA
+          ).alias("data"))
+          .select("data.*"))
+
+      # ── Transformaciones (equivalentes a stg_tickets en dbt) ──
+      transformed = (parsed
+          .withColumn("ticket_id",        col("`Ticket ID`").cast("string"))
+          .withColumn("customer_name",    lower(trim(col("`Customer Name`"))))
+          .withColumn("customer_email",   lower(trim(col("`Customer Email`"))))
+          .withColumn("customer_age",     col("`Customer Age`").cast("integer"))
+          .withColumn("customer_gender",  lower(trim(col("`Customer Gender`"))))
+          .withColumn("product_purchased",lower(trim(col("`Product Purchased`"))))
+          .withColumn("ticket_type",      lower(trim(col("`Ticket Type`"))))
+          .withColumn("ticket_subject",   lower(trim(col("`Ticket Subject`"))))
+          .withColumn("ticket_status",    lower(trim(col("`Ticket Status`"))))
+          .withColumn("ticket_priority",  lower(trim(col("`Ticket Priority`"))))
+          .withColumn("ticket_channel",   lower(trim(col("`Ticket Channel`"))))
+          .withColumn("satisfaction_rating",
+                      col("`Customer Satisfaction Rating`").cast("double"))
+          # Flag: ticket crítico sin resolver
+          .withColumn("is_critical_open",
+              when(
+                  (lower(col("`Ticket Priority`")) == "critical") &
+                  (lower(col("`Ticket Status`")) != "closed"),
+                  lit(1)
+              ).otherwise(lit(0))
+          )
+          .withColumn("ingested_at", current_timestamp())
+          .select(
+              "ticket_id", "customer_name", "customer_email",
+              "customer_age", "customer_gender", "product_purchased",
+              "ticket_type", "ticket_subject", "ticket_status",
+              "ticket_priority", "ticket_channel",
+              "satisfaction_rating", "is_critical_open", "ingested_at"
+          ))
+
+      # ── Escribir a micro-batch → DuckDB ───────────────────────
+      def write_to_duckdb(batch_df, batch_id):
+          pdf = batch_df.toPandas()
+          if pdf.empty:
+              return
+          con = duckdb.connect("{{vars.duckdb_path}}")
+          con.execute("CREATE SCHEMA IF NOT EXISTS streaming")
+          con.execute("""
+              CREATE TABLE IF NOT EXISTS streaming.tickets_spark (
+                  ticket_id          VARCHAR,
+                  customer_name      VARCHAR,
+                  customer_email     VARCHAR,
+                  customer_age       INTEGER,
+                  customer_gender    VARCHAR,
+                  product_purchased  VARCHAR,
+                  ticket_type        VARCHAR,
+                  ticket_subject     VARCHAR,
+                  ticket_status      VARCHAR,
+                  ticket_priority    VARCHAR,
+                  ticket_channel     VARCHAR,
+                  satisfaction_rating DOUBLE,
+                  is_critical_open   INTEGER,
+                  ingested_at        TIMESTAMP,
+                  batch_id           INTEGER
+              )
+          """)
+          pdf["batch_id"] = batch_id
+          con.execute("INSERT INTO streaming.tickets_spark SELECT * FROM pdf")
+          count = con.execute("SELECT COUNT(*) FROM streaming.tickets_spark").fetchone()[0]
+          print(f"✅ Batch {batch_id}: {len(pdf)} filas escritas | Total acumulado: {count}")
+          con.close()
+
+      # ── Stream query: procesa y termina cuando Kafka se vacía ─
+      query = (transformed.writeStream
+          .foreachBatch(write_to_duckdb)
+          .trigger(processingTime="5 seconds")
+          .start())
+
+      # Esperar máx 60s (para este flow de demo)
+      query.awaitTermination(timeout=60)
+      print("✅ Streaming completado. Tabla: streaming.tickets_spark")
+      spark.stop()

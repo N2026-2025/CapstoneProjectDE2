@@ -1,42 +1,39 @@
 import streamlit as st
-
+ 
 st.set_page_config(
-    page_title="CX Analytics Dashboard",
+    page_title="CX Support Analytics",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
+ 
 st.markdown("""
 # 📊 Customer Support Analytics
-### Capstone DE Zoomcamp — Stack: DuckDB · dbt · Kestra · Streamlit
+### Capstone DE Zoomcamp · DuckDB · dbt · Kestra · Streamlit
 """)
-
 st.markdown("---")
-
+ 
 col1, col2, col3 = st.columns(3)
-
 with col1:
-    st.info("### 🔧 Operations & SLA\nTiempos de respuesta, backlog, SLA por canal y prioridad.")
-    st.page_link("pages/1_Operations_SLA.py", label="Ir al dashboard →")
-
+    st.info("### 🏥 Product Health\nHealth score por producto, riesgo, críticos sin resolver.")
+    st.page_link("pages/1_Product_Health.py", label="Ir →")
 with col2:
-    st.info("### ⭐ CX Satisfaction\nSatisfacción por canal, producto, edad y tiempo de resolución.")
-    st.page_link("pages/2_CX_Satisfaction.py", label="Ir al dashboard →")
-
+    st.info("### 🚨 Churn Risk\nClientes recurrentes y riesgo de abandono.")
+    st.page_link("pages/2_Churn_Risk.py", label="Ir →")
 with col3:
-    st.info("### 🎯 Priority & Subjects\nMatrix de prioridades, productos con más quejas, escalamientos.")
-    st.page_link("pages/3_Priority_Subjects.py", label="Ir al dashboard →")
-
+    st.info("### 🗄️ SQL Explorer\nQuery libre sobre DuckDB + descarga CSV.")
+    st.page_link("pages/3_Explorer.py", label="Ir →")
+ 
 col4, col5, _ = st.columns(3)
-
 with col4:
-    st.info("### ⚖️ Fairness / Bias\nDetección de sesgos por género, edad y canal de atención.")
-    st.page_link("pages/4_Fairness.py", label="Ir al dashboard →")
-
+    st.info("### 📡 Channel Efficiency\n¿Qué canal resuelve mejor? Desvío vs benchmark global.")
+    st.page_link("pages/4_Channel_Efficiency.py", label="Ir →")
 with col5:
-    st.info("### 🗄️ Raw Explorer\nExplorá las tablas de DuckDB directamente con SQL.")
-    st.page_link("pages/5_Explorer.py", label="Ir al dashboard →")
-
+    st.info("### 🔽 Ticket Funnel\n¿Dónde se atascan los tickets? Dead-ends por subject.")
+    st.page_link("pages/5_Ticket_Funnel.py", label="Ir →")
+ 
 st.markdown("---")
-st.caption("Datos: [Customer Support Ticket Dataset — Kaggle](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset) | Pipeline: Kestra → DuckDB raw → dbt → Streamlit")
+st.caption(
+    "Datos: [Customer Support Ticket Dataset — Kaggle](https://www.kaggle.com/datasets/suraj520/customer-support-ticket-dataset) "
+    "| Pipeline: Kestra → DuckDB raw → dbt → Streamlit"
+)
