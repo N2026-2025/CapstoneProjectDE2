@@ -83,8 +83,7 @@ El dataset tiene entre 8K y 200K filas. DuckDB corre queries analíticas a esa e
 
 ---
 
-Archivo: [`architecture.mmd`](./architecture.mmd) — renderizable en [mermaid.live](https://mermaid.live) o con `mmdc`.
- 
+
 ```mermaid
 flowchart TD
     subgraph CLOUD["☁️ GCP — Terraform IaC"]
@@ -127,7 +126,8 @@ flowchart TD
     PH & RC & TF & CE --> ST & SUP
     RAW --> JUP
 ```
-
+Archivo: [`architecture.mmd`](./architecture.mmd) — renderizable en [mermaid.live](https://mermaid.live) o con `mmdc`.
+ 
 ---
 
 ## Estructura del proyecto
